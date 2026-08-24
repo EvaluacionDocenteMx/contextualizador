@@ -66,15 +66,15 @@ function prompt(op, e) {
 
 Grados con los que trabaja el colectivo: ${e.grados.join(', ')}.
 
-Revisa el catálogo completo y elige los contenidos que se vinculan de verdad con esta problemática. Busca en los cuatro campos formativos: el valor de esto es que el colectivo vea vínculos que no había considerado. Propón entre 2 y 4 por campo formativo, ordenados del más pertinente al menos. Si un campo no aporta nada honesto, devuelve una lista vacía para ese campo y explica por qué en "sinAporte".
+Revisa el catálogo completo y elige los contenidos que se vinculan de verdad con esta problemática. Busca en los cuatro campos formativos: el valor de esto es que el colectivo vea vínculos que no había considerado. Propón 2 o 3 por campo formativo, ordenados del más pertinente al menos: pocos y buenos. Si un campo no aporta nada honesto, devuelve una lista vacía para ese campo y explica por qué en "sinAporte".
 
 Devuelve este JSON:
 {
  "lectura": "2 o 3 líneas: qué entendiste de la problemática y qué la hace trabajable desde la escuela",
  "propuestas": [
    {"id":"cXXXX",
-    "porque":"por qué este contenido se vincula con ESTA problemática, no con el tema en general. 2 a 4 líneas.",
-    "como":"cómo podría abordarse: con qué se empieza, con qué evidencia, quién de la comunidad participa. 2 a 4 líneas."}
+    "porque":"por qué este contenido se vincula con ESTA problemática, no con el tema en general. 2 o 3 líneas, sin rodeos.",
+    "como":"cómo podría abordarse: con qué se empieza, con qué evidencia, quién de la comunidad participa. 2 o 3 líneas, concretas."}
  ],
  "sinAporte": [{"campo":"nombre del campo","razon":"por qué no hay nada pertinente"}]
 }`
@@ -194,7 +194,32 @@ async function llamaModelo(op, e) {
   }
   const j = await r.json()
   const texto = (j.content || []).filter(x => x.type === 'text').map(x => x.text).join('')
-  return { texto, uso: j.usage || {}, modelo }
+  return { texto, uso: j.usage || {}, modelo, corte: j.stop_reason === 'max_tokens' }
+}
+
+/* Si el modelo se quedo a media frase, se corta en el ultimo elemento que
+   quedo cerrado y se cierra lo que faltaba, para no tirar el trabajo pagado. */
+function repara(t) {
+  const BARRA = String.fromCharCode(92)
+  const pila = []
+  let enCadena = false, escapa = false
+  let corte = -1, pilaCorte = null
+  for (let k = 0; k < t.length; k++) {
+    const c = t[k]
+    if (escapa) { escapa = false; continue }
+    if (enCadena && c === BARRA) { escapa = true; continue }
+    if (c === '"') { enCadena = !enCadena; continue }
+    if (enCadena) continue
+    if (c === '{') pila.push('}')
+    else if (c === '[') pila.push(']')
+    else if (c === '}' || c === ']') {
+      pila.pop()
+      if (pila.length >= 1) { corte = k + 1; pilaCorte = pila.slice() }
+    }
+  }
+  if (corte < 0 || !pilaCorte) return null
+  const base = t.slice(0, corte).trimEnd().replace(/,$/, '')
+  try { return JSON.parse(base + pilaCorte.slice().reverse().join('')) } catch { return null }
 }
 
 function parseaJson(texto) {
@@ -202,6 +227,7 @@ function parseaJson(texto) {
   try { return JSON.parse(t) } catch {}
   const i = t.indexOf('{'), f = t.lastIndexOf('}')
   if (i >= 0 && f > i) { try { return JSON.parse(t.slice(i, f + 1)) } catch {} }
+  if (i >= 0) return repara(t.slice(i))
   return null
 }
 
@@ -284,7 +310,13 @@ export async function procesa(op, e, enDemo, hReq) {
     try { r = await llamaModelo(op, e) }
     catch (err) { throw new Error('No se pudo consultar el modelo: ' + (err && err.message ? err.message : err)) }
     datos = parseaJson(r.texto)
-    if (!datos) throw new Error('El modelo devolvió una respuesta que no se pudo leer. Vuelve a intentar.')
+    if (!datos) {
+      const pista = String(r.texto || '').trim().slice(0, 220)
+      throw new Error((r.corte
+        ? 'La respuesta del modelo se corto por lo larga y no se pudo rescatar. Vuelve a intentar.'
+        : 'El modelo devolvio una respuesta que no se pudo leer.') +
+        (pista ? ' [empezaba asi: ' + pista + ']' : ' [no devolvio texto]'))
+    }
     gasto = await registraGasto(r.modelo, r.uso)
   }
 
