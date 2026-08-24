@@ -36,6 +36,7 @@ function num(v, d) { const n = parseFloat(v); return Number.isFinite(n) ? n : d 
    proceso (suficiente para desarrollo, se pierde entre invocaciones).
    --------------------------------------------------------------------- */
 let almacen = null
+let fallo = ''
 const memoria = new Map()
 
 async function store() {
@@ -43,11 +44,26 @@ async function store() {
   try {
     const { getStore } = await import('@netlify/blobs')
     almacen = getStore('contextualizador')
-  } catch {
+  } catch (err) {
+    fallo = err && err.message ? err.message : String(err)
     almacen = false
   }
   return almacen
 }
+/* Saber si el almacén compartido está de verdad disponible es crítico: sin él,
+   la función de segundo plano no tendría dónde dejar el resultado. */
+export async function estadoAlmacen() {
+  const s = await store()
+  if (!s) return { compartido: false, detalle: fallo || 'no se pudo cargar @netlify/blobs' }
+  try {
+    await s.setJSON('diagnostico', { t: Date.now() })
+    const v = await s.get('diagnostico', { type: 'json' })
+    return { compartido: !!v, detalle: 'Netlify Blobs responde' }
+  } catch (err) {
+    return { compartido: false, detalle: 'Netlify Blobs falló: ' + (err && err.message ? err.message : err) }
+  }
+}
+
 export async function leer(clave) {
   const s = await store()
   if (!s) return memoria.get(clave) ?? null
