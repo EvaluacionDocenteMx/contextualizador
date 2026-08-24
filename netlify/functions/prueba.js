@@ -4,7 +4,7 @@
    Se abre con:  /api/prueba?clave=LA_DE_CLAVE_PANEL
    ========================================================================= */
 import { MODELOS, respuesta, estadoAlmacen } from './_control.js'
-import { D, DEMO } from './_nucleo.js'
+import { D, DEMO, diagnosticoProfundo } from './_nucleo.js'
 
 export default async (req) => {
   const clave = new URL(req.url).searchParams.get('clave') || ''
@@ -13,6 +13,7 @@ export default async (req) => {
 
   const llave = process.env.ANTHROPIC_API_KEY || ''
   const informe = {
+    versionDelServidor: '4 · diagnóstico',
     nivel: D.nivel,
     contenidosCargados: D.contenidos.length,
     modoDemo: DEMO(),
@@ -63,6 +64,14 @@ export default async (req) => {
     informe.resultado = 'No se pudo ni siquiera conectar con Anthropic.'
     informe.mensajeDeAnthropic = err && err.message ? err.message : String(err)
   }
+
+  /* Con &real=1 hace una consulta de propuestas de verdad y reporta cada paso.
+     Cuesta lo mismo que una consulta normal. Con &real=todos usa todos los grados. */
+  const real = new URL(req.url).searchParams.get('real')
+  if (real && informe.estadoHttp === 200) {
+    informe.consultaReal = await diagnosticoProfundo(real === 'todos' ? D.grados : [D.grados[0]])
+  }
+
   return respuesta(informe)
 }
 
