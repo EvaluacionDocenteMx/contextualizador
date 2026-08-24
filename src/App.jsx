@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { INFO, CAMPOS, CL, EJES } from './nivel.js'
-import { pide, nuevaSesion } from './api.js'
+import { pide, nuevaSesion, VERSION } from './api.js'
 import { Mascota, LogoMini } from './componentes/Mascota.jsx'
 import Propuestas from './componentes/Propuestas.jsx'
 import Cierre from './componentes/Cierre.jsx'
@@ -76,6 +76,11 @@ export default function App() {
     }
     const r = await llama({ op: 'propuesta', problematica: act.texto.trim() }, 'Leyendo el Programa Sintético completo…')
     if (!r) return
+    if (!Array.isArray(r.propuestas)) {
+      setError({ mensaje: 'El servidor contestó algo que esta pantalla no supo leer. ' +
+        'Suele ser que el navegador guardó una versión vieja: presiona Ctrl + F5 para recargar a fondo.' })
+      return
+    }
     upd({ lectura: r.lectura, propuestas: r.propuestas, sinAporte: r.sinAporte || [],
           sel: r.propuestas.map(p => p.id), reo: null, proy: null })
     setFiltroCampo([]); setFiltroGrado([])
@@ -346,7 +351,8 @@ export default function App() {
         <footer>
           Construido sobre los Programas Sintéticos, el Plan de Estudio 2022 y las Sugerencias metodológicas
           para el desarrollo de los proyectos educativos (SEP).<br />
-          Cada contenido y cada PDA se muestran con su fase y su página para que puedas cotejarlos.
+          Cada contenido y cada PDA se muestran con su fase y su página para que puedas cotejarlos.<br />
+          <span style={{ opacity: .55 }}>versión {VERSION}</span>
         </footer>
       </div>
     </>
