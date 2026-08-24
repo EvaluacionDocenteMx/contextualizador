@@ -162,7 +162,7 @@ async function llamaModelo(op, e) {
   /* Netlify corta a los 60 segundos aunque la respuesta vaya en vivo. Cortamos
      antes nosotros, para alcanzar a devolver un mensaje entendible. */
   const corta = new AbortController()
-  const reloj = setTimeout(() => corta.abort(), 48000)
+  const reloj = setTimeout(() => corta.abort(), 240000)
   let r
   try {
     r = await fetch('https://api.anthropic.com/v1/messages', {
