@@ -338,3 +338,81 @@ export async function procesa(op, e, enDemo, hReq) {
 
   return salida
 }
+
+/* ---------------- diagnóstico profundo ----------------
+   Hace una consulta real de propuestas, SIN límite de tiempo propio, y reporta
+   cada paso con su duración. Así se sabe si el modelo de verdad tarda o si lo
+   que estorbaba era nuestro propio corte. Cuesta lo que una consulta normal. */
+export async function diagnosticoProfundo(grados) {
+  const gs = grados && grados.length ? grados : [D.grados[0]]
+  const cat = catalogo(gs)
+  const inf = {
+    grados: gs,
+    contenidosEnElCatalogo: cat ? cat.split('\n').length : 0,
+    caracteresDelCatalogo: cat.length,
+    techoDeSalida: MAX_SALIDA.propuesta,
+    limiteDeCorteSegundos: typeof LIMITE_MODELO_MS !== 'undefined'
+      ? LIMITE_MODELO_MS / 1000 : 'sin definir · el archivo es de una versión anterior',
+  }
+  const e = {
+    problematica: 'Afuera de la escuela se venden sobre todo frituras y refrescos, ' +
+                  'y a las familias les cuesta trabajo conseguir fruta y verdura fresca.',
+    grados: gs, ejes: [],
+  }
+  const sistema = [
+    { type: 'text', text: ENCARGO },
+    { type: 'text', text: `CATÁLOGO DE CONTENIDOS Y PDA — ${D.nombre} (grados ${gs.join(', ')})` +
+        `\nFormato: id|campo|fase y página|grados|contenido|PDA\n\n${cat}` },
+    { type: 'text', text: `FINALIDADES Y ESPECIFICIDADES DE LOS CAMPOS FORMATIVOS\n\n${bloqueCampos()}` },
+    { type: 'text', text: `EJES ARTICULADORES (Plan de Estudio 2022)\n\n${bloqueEjes()}` },
+    { type: 'text', text: `PERFIL DE EGRESO\n\n${bloquePerfil()}` },
+  ]
+  const cuerpo = JSON.stringify({
+    model: MODELOS.propuesta,
+    max_tokens: MAX_SALIDA.propuesta,
+    system: sistema,
+    messages: [{ role: 'user', content: prompt('propuesta', e) }],
+  })
+  inf.tamanoDeLaPeticionKb = Math.round(cuerpo.length / 1024)
+
+  const t0 = Date.now()
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': (process.env.ANTHROPIC_API_KEY || '').trim(),
+        'anthropic-version': '2023-06-01',
+      },
+      body: cuerpo,
+    })
+    inf.segundos = +((Date.now() - t0) / 1000).toFixed(1)
+    inf.estadoHttp = r.status
+    const texto = await r.text()
+    inf.segundosConCuerpoLeido = +((Date.now() - t0) / 1000).toFixed(1)
+    if (!r.ok) {
+      inf.mensajeDeAnthropic = texto.slice(0, 500)
+      inf.resultado = 'Anthropic rechazó la petición. El motivo está en "mensajeDeAnthropic".'
+      return inf
+    }
+    const j = JSON.parse(texto)
+    const salida = (j.content || []).filter(x => x.type === 'text').map(x => x.text).join('')
+    inf.razonDeParo = j.stop_reason
+    inf.tokensDeSalida = (j.usage || {}).output_tokens || 0
+    inf.tokensDeEntrada = (j.usage || {}).input_tokens || 0
+    const d = parseaJson(salida)
+    inf.sePudoLeerElJson = !!d
+    inf.propuestasDevueltas = d && Array.isArray(d.propuestas) ? d.propuestas.length : 0
+    inf.principioDeLaRespuesta = salida.trim().slice(0, 200)
+    const g = await registraGasto(MODELOS.propuesta, j.usage || {})
+    inf.costoDeEstaPrueba = +g.usd.toFixed(4)
+    inf.resultado = inf.sePudoLeerElJson
+      ? `Todo el camino del servidor funciona, en ${inf.segundosConCuerpoLeido} segundos.`
+      : 'El modelo contestó pero su respuesta no se pudo leer.'
+  } catch (err) {
+    inf.segundos = +((Date.now() - t0) / 1000).toFixed(1)
+    inf.falla = err && err.message ? err.message : String(err)
+    inf.resultado = 'La llamada falló. El detalle está en "falla".'
+  }
+  return inf
+}
