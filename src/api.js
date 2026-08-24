@@ -35,14 +35,29 @@ export async function pide(cuerpo) {
   if (enVuelo.has(f)) return enVuelo.get(f)
 
   const p = (async () => {
-    const r = await fetch('/api/ia', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(c),
-    })
+    /* La función responde en vivo para no morir en el tope de tiempo de
+       Netlify: mientras el modelo trabaja llegan saltos de línea y al final el
+       JSON. Por eso el estado siempre es 200 y el error viaja en el cuerpo. */
+    const corta = new AbortController()
+    const reloj = setTimeout(() => corta.abort(), 75000)
+    let r
+    try {
+      r = await fetch('/api/ia', {
+        method: 'POST',
+        signal: corta.signal,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(c),
+      })
+    } catch (err) {
+      clearTimeout(reloj)
+      throw new Error(err && err.name === 'AbortError'
+        ? 'La consulta tardó demasiado y se canceló. Vuelve a presionar el botón; si insiste, trabaja con menos grados a la vez.'
+        : 'No hubo conexión con el servidor. Revisa tu internet y vuelve a intentar.')
+    }
     let j
     try { j = await r.json() } catch { j = { error: 'Respuesta ilegible del servidor' } }
-    if (!r.ok) {
+    finally { clearTimeout(reloj) }
+    if (!r.ok || (j && j.error)) {
       const e = new Error(j.mensaje || j.error || `Error ${r.status}`)
       e.codigo = j.codigo
       e.datos = j
