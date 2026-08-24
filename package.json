@@ -1,0 +1,20 @@
+{
+  "name": "contextualizador-programa-analitico",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "build:preescolar": "VITE_NIVEL=preescolar vite build --outDir dist-preescolar",
+    "build:primaria": "VITE_NIVEL=primaria vite build --outDir dist-primaria",
+    "build:secundaria": "VITE_NIVEL=secundaria vite build --outDir dist-secundaria",
+    "preview": "vite preview"
+  },
+  "dependencies": { "react": "^18.3.1", "react-dom": "^18.3.1" },
+  "devDependencies": {
+    "@netlify/blobs": "^8.1.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.11"
+  }
+}

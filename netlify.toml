@@ -1,0 +1,15 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+[functions]
+  node_bundler = "esbuild"
+
+# Variables que se configuran en el panel de Netlify:
+#   ANTHROPIC_API_KEY   obligatoria, salvo en MODO_DEMO
+#   NIVEL               preescolar | primaria | secundaria
+#   MODO_DEMO           "1" para probar sin gastar (respuestas de ejemplo)
+#   CODIGO_ACCESO       opcional; si se define, la app pide ese código
+#   TOPE_MENSUAL_USD    techo de gasto del periodo; al alcanzarlo la función deja de llamar
+#   TOPE_PROBLEMATICAS  máximo de problemáticas por sesión (por defecto 20)
