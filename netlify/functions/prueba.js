@@ -13,7 +13,7 @@ export default async (req) => {
 
   const llave = process.env.ANTHROPIC_API_KEY || ''
   const informe = {
-    versionDelServidor: '4 · diagnóstico',
+    versionDelServidor: '5 · propuestas breves',
     nivel: D.nivel,
     contenidosCargados: D.contenidos.length,
     modoDemo: DEMO(),
