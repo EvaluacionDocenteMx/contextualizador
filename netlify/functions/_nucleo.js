@@ -87,12 +87,12 @@ ${e.elegidos.map(c => `- ${c.id} | ${c.campo} | ${c.contenido}`).join('\n')}
 
 EJES ARTICULADORES QUE ELIGIÓ EL COLECTIVO: ${e.ejes.join(', ')}.
 
-Elegir un eje no es ponerle una etiqueta al proyecto: cambia hacia dónde se orienta el trabajo. Explica esa reorientación y, si hace falta, suma del catálogo los contenidos que ese enfoque necesita para sostenerse y que el colectivo no había elegido. Si con lo que ya tiene basta, devuelve "adicionales" vacío.
+Elegir un eje no es ponerle una etiqueta al proyecto: cambia hacia dónde se orienta el trabajo. Explica esa reorientación y, si hace falta, suma del catálogo los contenidos que ese enfoque necesita para sostenerse y que el colectivo no había elegido: cuando mucho tres. Si con lo que ya tiene basta, devuelve "adicionales" vacío.
 
 Devuelve este JSON:
 {
- "orientacion":"5 a 8 líneas: cómo cambia el trabajo al mirarlo desde estos ejes, con ejemplos concretos de hacia dónde llevar la reflexión en esta problemática",
- "adicionales":[{"id":"cXXXX","porque":"por qué este eje exige este contenido","como":"cómo se aborda"}],
+ "orientacion":"4 a 6 líneas: cómo cambia el trabajo al mirarlo desde estos ejes, con ejemplos concretos de hacia dónde llevar la reflexión en esta problemática",
+ "adicionales":[{"id":"cXXXX","porque":"por qué este eje exige este contenido. 2 líneas.","como":"cómo se aborda. 2 líneas."}],
  "preguntasParaElColectivo":["2 o 3 preguntas que el colectivo debería hacerse para que el eje no quede en discurso"]
 }`
 
@@ -203,7 +203,7 @@ function repara(t) {
   const BARRA = String.fromCharCode(92)
   const pila = []
   let enCadena = false, escapa = false
-  let corte = -1, pilaCorte = null
+  const candidatos = []
   for (let k = 0; k < t.length; k++) {
     const c = t[k]
     if (escapa) { escapa = false; continue }
@@ -214,12 +214,21 @@ function repara(t) {
     else if (c === '[') pila.push(']')
     else if (c === '}' || c === ']') {
       pila.pop()
-      if (pila.length >= 1) { corte = k + 1; pilaCorte = pila.slice() }
+      if (pila.length >= 1) candidatos.push({ corte: k + 1, pila: pila.slice(), cadena: false })
+    } else if (c === ',' && pila.length >= 1) {
+      candidatos.push({ corte: k, pila: pila.slice(), cadena: false })
     }
   }
-  if (corte < 0 || !pilaCorte) return null
-  const base = t.slice(0, corte).trimEnd().replace(/,$/, '')
-  try { return JSON.parse(base + pilaCorte.slice().reverse().join('')) } catch { return null }
+  /* El texto completo, cerrando la comilla si quedo abierta: conserva mas. */
+  candidatos.push({ corte: t.length, pila: pila.slice(), cadena: enCadena })
+  for (let i = candidatos.length - 1; i >= 0; i--) {
+    const c = candidatos[i]
+    let base = t.slice(0, c.corte)
+    if (c.cadena) base += '"'
+    base = base.trimEnd().replace(/,$/, '')
+    try { return JSON.parse(base + c.pila.slice().reverse().join('')) } catch {}
+  }
+  return null
 }
 
 function parseaJson(texto) {
