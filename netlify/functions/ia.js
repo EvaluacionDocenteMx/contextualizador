@@ -149,8 +149,9 @@ async function llamaModelo(op, e) {
     /* Estos bloques son idénticos en todas las consultas del nivel, así que
        se cachean una vez y las siguientes las leen a una décima parte del
        precio. El caché se comparte entre todas las escuelas. */
-    { type: 'text', text: `CATÁLOGO DE CONTENIDOS Y PDA — ${D.nombre}\n` +
-        `Formato: id|campo|fase y página|grados|contenido|PDA\n\n${catalogo(null)}`,
+    { type: 'text', text: `CATÁLOGO DE CONTENIDOS Y PDA — ${D.nombre}` +
+        (e.grados && e.grados.length < D.grados.length ? ` (grados ${e.grados.join(', ')})` : '') +
+        `\nFormato: id|campo|fase y página|grados|contenido|PDA\n\n${catalogo(e.grados)}`,
       cache_control: { type: 'ephemeral', ttl: '1h' } },
     { type: 'text', text: `FINALIDADES Y ESPECIFICIDADES DE LOS CAMPOS FORMATIVOS\n\n${bloqueCampos()}` },
     { type: 'text', text: `EJES ARTICULADORES (Plan de Estudio 2022)\n\n${bloqueEjes()}` },
@@ -158,20 +159,35 @@ async function llamaModelo(op, e) {
     { type: 'text', text: `METODOLOGÍAS SOCIOCRÍTICAS (Sugerencias metodológicas, SEP)\n\n${bloqueMetodologias()}`,
       cache_control: { type: 'ephemeral', ttl: '1h' } },
   ]
-  const r = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-api-key': process.env.ANTHROPIC_API_KEY,
-      'anthropic-version': '2023-06-01',
-    },
-    body: JSON.stringify({
-      model: modelo,
-      max_tokens: MAX_SALIDA[op],
-      system: sistema,
-      messages: [{ role: 'user', content: prompt(op, e) }],
-    }),
-  })
+  /* Netlify corta a los 60 segundos aunque la respuesta vaya en vivo. Cortamos
+     antes nosotros, para alcanzar a devolver un mensaje entendible. */
+  const corta = new AbortController()
+  const reloj = setTimeout(() => corta.abort(), 48000)
+  let r
+  try {
+    r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      signal: corta.signal,
+      headers: {
+        'content-type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: modelo,
+        max_tokens: MAX_SALIDA[op],
+        system: sistema,
+        messages: [{ role: 'user', content: prompt(op, e) }],
+      }),
+    })
+  } catch (err) {
+    if (err && err.name === 'AbortError') {
+      throw new Error('el modelo tardó demasiado. Intenta con menos grados o vuelve a presionar el botón.')
+    }
+    throw err
+  } finally {
+    clearTimeout(reloj)
+  }
   if (!r.ok) {
     const t = await r.text()
     throw new Error(`API ${r.status}: ${t.slice(0, 300)}`)
@@ -256,6 +272,103 @@ function demo(op, e) {
   return { valoracion: 'MODO DEMO', pda: { [e.grados[0]]: ['MODO DEMO · PDA de ejemplo.'] }, sugerenciaRedaccion: e.contenidoNuevo || '' }
 }
 
+/* Netlify corta las funciones normales a los pocos segundos, y una consulta al
+   modelo tarda más que eso. Una respuesta en streaming mantiene la conexión
+   abierta y sube el límite a 60 segundos: se emiten saltos de línea como latido
+   mientras el modelo trabaja y al final el JSON. Los saltos de línea iniciales
+   son espacio en blanco válido, así que el navegador parsea el JSON sin cambios. */
+function respuestaEnVivo(trabajo) {
+  const enc = new TextEncoder()
+  const cuerpo = new ReadableStream({
+    async start(c) {
+      const latido = setInterval(() => { try { c.enqueue(enc.encode('\n')) } catch {} }, 2000)
+      try {
+        c.enqueue(enc.encode('\n'))
+        const datos = await trabajo
+        c.enqueue(enc.encode(JSON.stringify(datos)))
+      } catch (err) {
+        c.enqueue(enc.encode(JSON.stringify({
+          error: err && err.message ? err.message : String(err) })))
+      } finally {
+        clearInterval(latido)
+        try { c.close() } catch {}
+      }
+    },
+  })
+  return new Response(cuerpo, {
+    headers: { 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' },
+  })
+}
+
+/* Todo lo que puede tardar vive aquí. Devuelve la salida ya verificada o
+   lanza un error con el texto que verá el colectivo. */
+async function procesa(op, e, enDemo, hReq, ses, hProb, rit) {
+  /* 6 · al modelo */
+  let datos, gasto = null
+  if (enDemo) {
+    datos = demo(op, e)
+  } else {
+    let r
+    try { r = await llamaModelo(op, e) }
+    catch (err) { throw new Error('No se pudo consultar el modelo: ' + (err && err.message ? err.message : err)) }
+    datos = parseaJson(r.texto)
+    if (!datos) throw new Error('El modelo devolvió una respuesta que no se pudo leer. Vuelve a intentar.')
+    gasto = await registraGasto(r.modelo, r.uso)
+  }
+
+  /* 7 · verificación contra el catálogo */
+  let salida = { op }
+  if (op === 'propuesta') {
+    const v = verifica(datos.propuestas, e.grados)
+    salida.lectura = String(datos.lectura || '')
+    salida.propuestas = v.buenas
+    salida.sinAporte = Array.isArray(datos.sinAporte) ? datos.sinAporte : []
+    salida.descartadas = v.descartadas.length
+  } else if (op === 'ejes') {
+    const v = verifica(datos.adicionales, e.grados)
+    salida.orientacion = String(datos.orientacion || '')
+    salida.adicionales = v.buenas
+    salida.preguntas = Array.isArray(datos.preguntasParaElColectivo) ? datos.preguntasParaElColectivo : []
+    salida.descartadas = v.descartadas.length
+  } else if (op === 'proyecto') {
+    const m = D.metodologias[datos.metodologia] ? datos.metodologia : 'abpc'
+    salida.proyecto = {
+      metodologia: m, nombreMetodologia: D.metodologias[m].nombre,
+      porQueEsa: String(datos.porQueEsa || ''), titulo: String(datos.titulo || ''),
+      pregunta: String(datos.pregunta || ''), producto: String(datos.producto || ''),
+      participacionComunidad: String(datos.participacionComunidad || ''),
+      fases: Array.isArray(datos.fases) ? datos.fases.slice(0, 6) : [],
+    }
+    /* Las finalidades no se le preguntan al modelo: se buscan en el documento
+       oficial a partir del campo y la fase de los contenidos elegidos. Salen
+       literales y no cuestan nada. */
+    salida.finalidades = finalidadesDe(e.elegidos)
+    /* Los rasgos del perfil sí requieren criterio, así que los propone el
+       modelo, pero el texto que se muestra es el literal del Plan. */
+    salida.rasgos = (Array.isArray(datos.rasgosPerfil) ? datos.rasgosPerfil : [])
+      .map(r => {
+        const encontrado = D.perfil.find(x => x.num === String(r.num || '').trim().toUpperCase())
+        return encontrado ? { num: encontrado.num, texto: encontrado.texto, porque: String(r.porque || '') } : null
+      }).filter(Boolean)
+  } else {
+    salida.valoracion = String(datos.valoracion || '')
+    salida.pda = datos.pda && typeof datos.pda === 'object' ? datos.pda : {}
+    salida.sugerenciaRedaccion = String(datos.sugerenciaRedaccion || '')
+  }
+
+  if (gasto) salida.costo = { estaLlamada: +gasto.usd.toFixed(5), acumuladoMes: +gasto.acumulado.toFixed(4) }
+  salida.demo = enDemo
+  if (enDemo) salida.demoPorque = DEMO() ? 'la variable MODO_DEMO está activa'
+    : 'la función no está recibiendo ANTHROPIC_API_KEY'
+
+  /* Las respuestas de ejemplo no se guardan: no valen nada y ensucian el caché. */
+  if (!enDemo) await guardaRespuesta(hReq, salida)
+  await anotaProblematica(ses.clave, ses.estado, hProb)
+  if (rit.sube) await rit.sube()
+
+  return salida
+}
+
 /* ---------------- manejador ---------------- */
 export default async (req) => {
   if (req.method !== 'POST') return respuesta({ error: 'Método no permitido' }, 405)
@@ -309,74 +422,13 @@ export default async (req) => {
     if (!e.elegidos.length) return respuesta({ error: 'No hay contenidos elegidos' }, 400)
   }
 
-  /* 6 · al modelo */
-  let datos, gasto = null
-  try {
-    if (enDemo) {
-      datos = demo(op, e)
-    } else {
-      const r = await llamaModelo(op, e)
-      datos = parseaJson(r.texto)
-      if (!datos) {
-        return respuesta({ error: 'El modelo devolvió una respuesta que no se pudo leer. Vuelve a intentar.' }, 502)
-      }
-      gasto = await registraGasto(r.modelo, r.uso)
-    }
-  } catch (err) {
-    return respuesta({ error: 'No se pudo consultar el modelo: ' + err.message }, 502)
+  /* 6 · el trabajo pesado va en una respuesta en vivo.
+     El modo demo responde al instante, así que no necesita streaming. */
+  if (enDemo) {
+    try { return respuesta(await procesa(op, e, true, hReq, ses, hProb, rit)) }
+    catch (err) { return respuesta({ error: err.message }, 502) }
   }
-
-  /* 7 · verificación contra el catálogo */
-  let salida = { op }
-  if (op === 'propuesta') {
-    const v = verifica(datos.propuestas, e.grados)
-    salida.lectura = String(datos.lectura || '')
-    salida.propuestas = v.buenas
-    salida.sinAporte = Array.isArray(datos.sinAporte) ? datos.sinAporte : []
-    salida.descartadas = v.descartadas.length
-  } else if (op === 'ejes') {
-    const v = verifica(datos.adicionales, e.grados)
-    salida.orientacion = String(datos.orientacion || '')
-    salida.adicionales = v.buenas
-    salida.preguntas = Array.isArray(datos.preguntasParaElColectivo) ? datos.preguntasParaElColectivo : []
-    salida.descartadas = v.descartadas.length
-  } else if (op === 'proyecto') {
-    const m = D.metodologias[datos.metodologia] ? datos.metodologia : 'abpc'
-    salida.proyecto = {
-      metodologia: m, nombreMetodologia: D.metodologias[m].nombre,
-      porQueEsa: String(datos.porQueEsa || ''), titulo: String(datos.titulo || ''),
-      pregunta: String(datos.pregunta || ''), producto: String(datos.producto || ''),
-      participacionComunidad: String(datos.participacionComunidad || ''),
-      fases: Array.isArray(datos.fases) ? datos.fases.slice(0, 6) : [],
-    }
-    /* Las finalidades no se le preguntan al modelo: se buscan en el documento
-       oficial a partir del campo y la fase de los contenidos elegidos. Salen
-       literales y no cuestan nada. */
-    salida.finalidades = finalidadesDe(e.elegidos)
-    /* Los rasgos del perfil sí requieren criterio, así que los propone el
-       modelo, pero el texto que se muestra es el literal del Plan. */
-    salida.rasgos = (Array.isArray(datos.rasgosPerfil) ? datos.rasgosPerfil : [])
-      .map(r => {
-        const encontrado = D.perfil.find(x => x.num === String(r.num || '').trim().toUpperCase())
-        return encontrado ? { num: encontrado.num, texto: encontrado.texto, porque: String(r.porque || '') } : null
-      }).filter(Boolean)
-  } else {
-    salida.valoracion = String(datos.valoracion || '')
-    salida.pda = datos.pda && typeof datos.pda === 'object' ? datos.pda : {}
-    salida.sugerenciaRedaccion = String(datos.sugerenciaRedaccion || '')
-  }
-
-  if (gasto) salida.costo = { estaLlamada: +gasto.usd.toFixed(5), acumuladoMes: +gasto.acumulado.toFixed(4) }
-  salida.demo = enDemo
-  if (enDemo) salida.demoPorque = DEMO() ? 'la variable MODO_DEMO está activa'
-    : 'la función no está recibiendo ANTHROPIC_API_KEY'
-
-  /* Las respuestas de ejemplo no se guardan: no valen nada y ensucian el caché. */
-  if (!enDemo) await guardaRespuesta(hReq, salida)
-  await anotaProblematica(ses.clave, ses.estado, hProb)
-  if (rit.sube) await rit.sube()
-
-  return respuesta(salida)
+  return respuestaEnVivo(procesa(op, e, false, hReq, ses, hProb, rit))
 }
 
 export const config = { path: '/api/ia' }
