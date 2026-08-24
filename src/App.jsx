@@ -13,6 +13,30 @@ const vacia = () => ({
   nuevo: { activo: false, texto: '', res: null },
 })
 
+/* Leer el Programa Sintético completo y redactar las propuestas le toma al
+   modelo entre veinte y cuarenta segundos. Sin un reloj a la vista, ese rato
+   se siente como si la aplicación se hubiera trabado. */
+function Pensando({ texto }) {
+  const [seg, setSeg] = useState(0)
+  useEffect(() => {
+    setSeg(0)
+    const t = setInterval(() => setSeg(s => s + 1), 1000)
+    return () => clearInterval(t)
+  }, [texto])
+  return (
+    <div className="pensando">
+      <span className="pt"><i /><i /><i /></span>
+      <span>
+        {texto} <b>{seg}s</b>
+        {seg > 8 && (
+          <><br /><small>Está leyendo todo el programa de tu nivel. Suele tardar entre 20 y 40 segundos;
+            no cierres ni recargues la página.</small></>
+        )}
+      </span>
+    </div>
+  )
+}
+
 export default function App() {
   const [escuela, setEscuela] = useState({})
   const [grados, setGrados] = useState(INFO.grados.slice())
@@ -210,9 +234,7 @@ export default function App() {
             </button>
             <small className="right">{act.texto.length}/1800</small>
           </div>
-          {cargando && (
-            <div className="pensando"><span className="pt"><i /><i /><i /></span>{cargando}</div>
-          )}
+          {cargando.startsWith('Leyendo') && <Pensando texto={cargando} />}
         </div>
 
         {/* ---------- 2 ---------- */}
@@ -267,6 +289,7 @@ export default function App() {
               </button>
               <small className="right">{act.sel.length} contenidos marcados</small>
             </div>
+            {cargando.startsWith('Reorientando') && <Pensando texto={cargando} />}
           </div>
         )}
 
@@ -294,6 +317,7 @@ export default function App() {
                 Ver finalidades, perfil de egreso y ruta de proyecto →
               </button>
             </div>
+            {cargando.startsWith('Armando') && <Pensando texto={cargando} />}
           </div>
         )}
 
