@@ -6,7 +6,7 @@
 
 /* Se muestra en el pie de la aplicación. Sirve para saber de un vistazo si el
    navegador está usando la versión nueva o una guardada de antes. */
-export const VERSION = '4 · arranque rápido'
+export const VERSION = '5 · arranque rápido'
 
 const SESION_CLAVE = 'ctx_sesion'
 const enVuelo = new Map()
@@ -106,7 +106,7 @@ export async function pide(cuerpo) {
       fetch('/api/trabajo', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ hReq: j.trabajo, firma: j.firma }),
+        body: JSON.stringify({ hReq: j.trabajo, firma: j.firma, carga: j.carga }),
       }).catch(() => {})
       fin = await espera(j.trabajo)
     }
