@@ -23,7 +23,9 @@ export default async (req) => {
              'si se repite, trabaja con menos grados a la vez.',
     })
   }
-  return respuesta({ estado: 'encurso', segundos: Math.round(transcurrido / 1000) })
+  /* La miga dice por donde va la funcion de segundo plano. */
+  const paso = await leer('paso:' + id)
+  return respuesta({ estado: 'encurso', segundos: Math.round(transcurrido / 1000), paso })
 }
 
 export const config = { path: '/api/estado' }
