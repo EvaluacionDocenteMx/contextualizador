@@ -6,7 +6,7 @@
 
 /* Se muestra en el pie de la aplicación. Sirve para saber de un vistazo si el
    navegador está usando la versión nueva o una guardada de antes. */
-export const VERSION = '3 · segundo plano'
+export const VERSION = '4 · arranque rápido'
 
 const SESION_CLAVE = 'ctx_sesion'
 const enVuelo = new Map()
@@ -98,7 +98,18 @@ export async function pide(cuerpo) {
     const j = await manda('/api/ia', c)
     /* Si la consulta se fue al segundo plano, aquí solo llegó el número de
        trabajo: hay que esperar preguntando. */
-    const fin = j && j.enCurso && j.trabajo ? await espera(j.trabajo) : j
+    let fin = j
+    if (j && j.enCurso && j.trabajo) {
+      /* El navegador despierta a la función de segundo plano sin esperar su
+         respuesta: la primera vez del día esa función tarda en arrancar y no
+         tiene caso que el colectivo espere por eso. */
+      fetch('/api/trabajo', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ hReq: j.trabajo, firma: j.firma }),
+      }).catch(() => {})
+      fin = await espera(j.trabajo)
+    }
     cacheLocal.set(f, fin)
     return fin
   })()
