@@ -80,39 +80,22 @@ export default async (req) => {
 
   /* 7 · ¿ya hay un trabajo idéntico en curso? Entonces no se paga otra vez:
      se le da al navegador el mismo número para que espere ese. */
+  const firma = await firmaTrabajo(hReq)
   const previo = await leer('trab:' + hReq)
   if (previo && previo.estado === 'encurso' && Date.now() - (previo.t || 0) < 5 * 60 * 1000) {
-    return respuesta({ enCurso: true, trabajo: hReq })
+    return respuesta({ enCurso: true, trabajo: hReq, firma })
   }
 
-  /* 8 · se despacha al segundo plano */
-  await escribir('trab:' + hReq, { estado: 'encurso', t: Date.now() })
+  /* 8 · se deja la tarea lista y se le entrega el número al navegador.
+     Quien dispara la función de segundo plano es el navegador, no esta función:
+     así el colectivo no espera a que esa función despierte, que la primera vez
+     del día puede tardar bastante. La firma la calcula el servidor, de modo que
+     solo sirve para este trabajo y nadie de fuera puede encargar consultas. */
+  await escribir('trab:' + hReq, { estado: 'encurso', t: Date.now(), carga: { op, e } })
   await anotaProblematica(ses.clave, ses.estado, hProb)
   if (rit.sube) await rit.sube()
 
-  let lanzado = false
-  try {
-    const destino = new URL('/api/trabajo', req.url).toString()
-    const r = await fetch(destino, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ op, e, hReq, firma: await firmaTrabajo(hReq) }),
-    })
-    lanzado = r.status === 202 || r.ok
-  } catch { lanzado = false }
-
-  if (lanzado) return respuesta({ enCurso: true, trabajo: hReq })
-
-  /* Respaldo: si el segundo plano no estuviera disponible, se hace aquí mismo.
-     Puede chocar con el límite de tiempo, pero es mejor que no responder. */
-  try {
-    const salida = await procesa(op, e, false, hReq)
-    await escribir('trab:' + hReq, { estado: 'listo', t: Date.now(), d: salida })
-    return respuesta(salida)
-  } catch (err) {
-    await escribir('trab:' + hReq, { estado: 'error', t: Date.now(), mensaje: err.message })
-    return respuesta({ error: err.message }, 502)
-  }
+  return respuesta({ enCurso: true, trabajo: hReq, firma })
 }
 
 export const config = { path: '/api/ia' }
