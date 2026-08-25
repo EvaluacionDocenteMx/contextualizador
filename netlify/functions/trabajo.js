@@ -1,8 +1,8 @@
 /* =========================================================================
-   Funcion de segundo plano: aqui se habla con el modelo.
+   Función de segundo plano: aquí se habla con el modelo.
    Tiene quince minutos. No devuelve nada al navegador: deja el resultado
-   guardado y /api/estado lo entrega. Va dejando migas de por donde paso,
-   para que un fallo silencioso no vuelva a costar una tarde.
+   guardado y /api/estado lo entrega. Va dejando migas de por dónde pasó, para
+   que un fallo silencioso no vuelva a costar una tarde.
    ========================================================================= */
 import { escribir, leer, hash } from './_control.js'
 import { procesa } from './_nucleo.js'
@@ -14,23 +14,25 @@ export default async (req) => {
   }
   try { p = await req.json() } catch { return }
 
-  const firma = p && p.firma
   hReq = p && p.hReq
   if (!hReq) return
-  await miga('entro')
+  await miga('entró')
 
-  const esperada = await hash((process.env.ANTHROPIC_API_KEY || 'sin-llave') + '|' + hReq)
-  if (firma !== esperada) { await miga('firma no coincide'); return }
-  await miga('firma ok')
+  /* La carga llega del navegador, pero firmada: si le cambiaran una coma, la
+     firma deja de coincidir. El almacén sirve de respaldo. */
+  const guardado = await leer('trab:' + hReq)
+  const cargaTexto = p.carga || (guardado && guardado.cargaTexto)
+  if (!cargaTexto) { await miga('sin carga') ; return }
 
-  let t = await leer('trab:' + hReq)
-  await miga('lei el trabajo', { hayRegistro: !!t, hayCarga: !!(t && t.carga), estado: t && t.estado })
+  const esperada = await hash((process.env.ANTHROPIC_API_KEY || 'sin-llave') + '|' + hReq + '|' + cargaTexto)
+  if (p.firma !== esperada) { await miga('la firma no coincide'); return }
 
-  /* Si el almacen todavia no propago la escritura, sirve la carga que manda el
-     navegador, que es exactamente la que el servidor le entrego. */
-  const carga = (t && t.carga) || p.carga
-  if (!carga) { await miga('sin carga'); return }
-  if (t && (t.estado === 'listo' || t.estado === 'error')) { await miga('ya estaba hecho'); return }
+  if (guardado && (guardado.estado === 'listo' || guardado.estado === 'error')) {
+    await miga('ya estaba hecho'); return
+  }
+
+  let carga
+  try { carga = JSON.parse(cargaTexto) } catch { await miga('carga ilegible'); return }
 
   try {
     await miga('llamando al modelo')
@@ -40,7 +42,7 @@ export default async (req) => {
   } catch (err) {
     const mensaje = err && err.message ? err.message : String(err)
     await escribir('trab:' + hReq, { estado: 'error', t: Date.now(), mensaje })
-    await miga('fallo', { mensaje: mensaje.slice(0, 300) })
+    await miga('falló', { mensaje: mensaje.slice(0, 300) })
   }
 }
 
