@@ -15,10 +15,6 @@ import {
 } from './_control.js'
 import { D, DEMO, PorId, procesa } from './_nucleo.js'
 
-/* La llave del trabajo se firma con la llave de la API: nadie de fuera puede
-   disparar la función de segundo plano y gastar por su cuenta. */
-export const firmaTrabajo = (hReq) => hash((process.env.ANTHROPIC_API_KEY || 'sin-llave') + '|' + hReq)
-
 export default async (req) => {
   if (req.method !== 'POST') return respuesta({ error: 'Método no permitido' }, 405)
 
@@ -78,24 +74,28 @@ export default async (req) => {
     catch (err) { return respuesta({ error: err.message }, 502) }
   }
 
-  /* 7 · ¿ya hay un trabajo idéntico en curso? Entonces no se paga otra vez:
-     se le da al navegador el mismo número para que espere ese. */
-  const firma = await firmaTrabajo(hReq)
+  /* 7 · la tarea viaja firmada por el navegador.
+     El almacén compartido tarda un instante en propagar lo que se escribe, y la
+     función de segundo plano arranca antes de eso: por eso la carga va también
+     en la respuesta, y la firma cubre el texto exacto de esa carga. Así el
+     navegador no puede alterar lo que se le va a pedir al modelo. */
+  const cargaTexto = JSON.stringify({ op, e })
+  const firma = await hash((process.env.ANTHROPIC_API_KEY || 'sin-llave') + '|' + hReq + '|' + cargaTexto)
+
+  /* ¿ya hay un trabajo idéntico en curso? Entonces no se paga otra vez. */
   const previo = await leer('trab:' + hReq)
   if (previo && previo.estado === 'encurso' && Date.now() - (previo.t || 0) < 5 * 60 * 1000) {
-    return respuesta({ enCurso: true, trabajo: hReq, firma })
+    return respuesta({ enCurso: true, trabajo: hReq, firma, carga: cargaTexto })
   }
 
-  /* 8 · se deja la tarea lista y se le entrega el número al navegador.
-     Quien dispara la función de segundo plano es el navegador, no esta función:
-     así el colectivo no espera a que esa función despierte, que la primera vez
-     del día puede tardar bastante. La firma la calcula el servidor, de modo que
-     solo sirve para este trabajo y nadie de fuera puede encargar consultas. */
-  await escribir('trab:' + hReq, { estado: 'encurso', t: Date.now(), carga: { op, e } })
+  /* 8 · se deja la tarea anotada y se le entrega al navegador, que es quien
+     despierta a la función de segundo plano: así el colectivo no espera a que
+     esa función arranque, que la primera vez del día puede tardar. */
+  await escribir('trab:' + hReq, { estado: 'encurso', t: Date.now(), cargaTexto })
   await anotaProblematica(ses.clave, ses.estado, hProb)
   if (rit.sube) await rit.sube()
 
-  return respuesta({ enCurso: true, trabajo: hReq, firma })
+  return respuesta({ enCurso: true, trabajo: hReq, firma, carga: cargaTexto })
 }
 
 export const config = { path: '/api/ia' }
