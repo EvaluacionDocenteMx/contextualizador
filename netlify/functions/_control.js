@@ -35,25 +35,27 @@ function num(v, d) { const n = parseFloat(v); return Number.isFinite(n) ? n : d 
    Almacén. Usa Netlify Blobs cuando está disponible; si no, memoria del
    proceso (suficiente para desarrollo, se pierde entre invocaciones).
    --------------------------------------------------------------------- */
-let almacen = null
+let modulo = null
 let fallo = ''
 const memoria = new Map()
 
+/* El permiso de acceso al almacén CADUCA. La función de segundo plano tarda
+   noventa segundos hablando con el modelo, y si se guarda el acceso desde el
+   arranque, al momento de escribir el resultado ya venció: la consulta se
+   calcula, se paga, y se pierde. Por eso el acceso se pide fresco cada vez.
+   Lo único que se guarda es el módulo, que no caduca. */
 async function store() {
-  if (almacen !== null) return almacen
+  if (modulo === false) return false
   try {
-    const { getStore } = await import('@netlify/blobs')
-    /* El nombre lleva versión: si un almacén queda en mal estado, se estrena
-       uno limpio cambiando este número, sin borrar nada. */
-    almacen = getStore('ctx-v2')
+    if (!modulo) modulo = await import('@netlify/blobs')
+    return modulo.getStore('ctx-v2')
   } catch (err) {
     fallo = err && err.message ? err.message : String(err)
-    almacen = false
+    modulo = false
+    return false
   }
-  return almacen
 }
-/* Saber si el almacén compartido está de verdad disponible es crítico: sin él,
-   la función de segundo plano no tendría dónde dejar el resultado. */
+
 export async function estadoAlmacen() {
   const s = await store()
   if (!s) return { compartido: false, detalle: fallo || 'no se pudo cargar @netlify/blobs' }
@@ -69,18 +71,25 @@ export async function estadoAlmacen() {
 export async function leer(clave) {
   const s = await store()
   if (!s) return memoria.get(clave) ?? null
-  try { return await s.get(clave, { type: 'json' }) } catch { return null }
+  try { return await s.get(clave, { type: 'json' }) } catch { return memoria.get(clave) ?? null }
 }
+
 export async function escribir(clave, valor) {
   const s = await store()
   if (!s) { memoria.set(clave, valor); return }
   try {
     await s.setJSON(clave, valor)
   } catch (err) {
-    /* Que quede en el registro de Netlify: un fallo silencioso aquí deja a la
-       escuela esperando un resultado que nunca se guardó. */
-    console.error('[almacen] no se pudo escribir', clave, err && err.message)
-    memoria.set(clave, valor)
+    /* Un segundo intento con acceso recién pedido: cubre el caso de que el
+       permiso haya caducado justo durante la escritura. */
+    try {
+      const s2 = await store()
+      if (s2) { await s2.setJSON(clave, valor); return }
+      throw err
+    } catch (err2) {
+      console.error('[almacen] no se pudo escribir', clave, err2 && err2.message)
+      memoria.set(clave, valor)
+    }
   }
 }
 
