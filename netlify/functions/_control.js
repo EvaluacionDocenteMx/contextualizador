@@ -43,7 +43,9 @@ async function store() {
   if (almacen !== null) return almacen
   try {
     const { getStore } = await import('@netlify/blobs')
-    almacen = getStore('contextualizador')
+    /* El nombre lleva versión: si un almacén queda en mal estado, se estrena
+       uno limpio cambiando este número, sin borrar nada. */
+    almacen = getStore('ctx-v2')
   } catch (err) {
     fallo = err && err.message ? err.message : String(err)
     almacen = false
@@ -72,7 +74,14 @@ export async function leer(clave) {
 export async function escribir(clave, valor) {
   const s = await store()
   if (!s) { memoria.set(clave, valor); return }
-  try { await s.setJSON(clave, valor) } catch { memoria.set(clave, valor) }
+  try {
+    await s.setJSON(clave, valor)
+  } catch (err) {
+    /* Que quede en el registro de Netlify: un fallo silencioso aquí deja a la
+       escuela esperando un resultado que nunca se guardó. */
+    console.error('[almacen] no se pudo escribir', clave, err && err.message)
+    memoria.set(clave, valor)
+  }
 }
 
 /* ---------------------------------------------------------------------
