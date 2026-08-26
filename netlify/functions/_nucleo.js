@@ -21,6 +21,11 @@ export const PorId = new Map(D.contenidos.map(c => [c.id, c]))
 /* En secundaria cada campo formativo se imparte por asignaturas y cada una
    tiene su docente. Preescolar y primaria no se organizan así: ahí esta lista
    queda vacía y todo lo que depende de ella simplemente no aparece. */
+/* Sube este número cada vez que cambie el encargo al modelo. Entra en la firma
+   de la caché, para que un cambio de instrucciones no se quede tapado por las
+   respuestas guardadas de la versión anterior. */
+export const VERSION_ENCARGO = '7'
+
 export const ASIGNATURAS = [...new Set(D.contenidos.map(c => c.subarea).filter(Boolean))]
 const porAsignatura = () => {
   const m = {}
