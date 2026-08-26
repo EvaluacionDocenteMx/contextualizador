@@ -74,9 +74,9 @@ function prompt(op, e) {
   if (op === 'propuesta') return `PROBLEMÁTICA DE LA LECTURA DE LA REALIDAD:
 """${e.problematica}"""
 
-Grados con los que trabaja el colectivo: ${e.grados.join(', ')}.
+Grados con los que trabaja el colectivo: ${e.grados.join(', ')}. El catálogo trae todos los grados del nivel; elige solo contenidos que tengan Procesos de Desarrollo de Aprendizaje en esos grados.
 
-Revisa el catálogo completo y elige los contenidos que se vinculan de verdad con esta problemática. Busca en los cuatro campos formativos: el valor de esto es que el colectivo vea vínculos que no había considerado. Propón 2 o 3 por campo formativo, ordenados del más pertinente al menos: pocos y buenos. Si un campo no aporta nada honesto, devuelve una lista vacía para ese campo y explica por qué en "sinAporte".
+Revisa el catálogo completo y elige los contenidos que se vinculan de verdad con esta problemática. Busca en los CUATRO campos formativos: el valor de esto es que el colectivo vea vínculos que no había considerado. Propón entre 3 y 5 por campo formativo, ordenados del más pertinente al menos. Recorre el catálogo entero antes de decidir: una problemática de la vida real casi siempre toca varios campos a la vez, y quedarte con dos o tres contenidos en total sería quedarte corto. Solo deja un campo sin propuestas cuando de verdad no haya nada honesto que ofrecer, y entonces explica por qué en "sinAporte".
 
 Devuelve este JSON:
 {
