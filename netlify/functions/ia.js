@@ -13,7 +13,7 @@ import {
   revisaPresupuesto, revisaSesion, anotaProblematica,
   revisaIp, revisaCodigo, respuestaEnCache,
 } from './_control.js'
-import { D, DEMO, PorId, procesa } from './_nucleo.js'
+import { D, DEMO, PorId, procesa, VERSION_ENCARGO } from './_nucleo.js'
 
 export default async (req) => {
   if (req.method !== 'POST') return respuesta({ error: 'Método no permitido' }, 405)
@@ -53,7 +53,7 @@ export default async (req) => {
   const hReq = await hash(JSON.stringify({
     op, n: D.nivel, p: e.problematica, g: e.grados, ej: e.ejes,
     el: (e.elegidos || []).map(String).sort(), cn: e.contenidoNuevo || '',
-    modo: enDemo ? 'demo' : 'ia',
+    modo: enDemo ? 'demo' : 'ia', v: VERSION_ENCARGO,
   }))
   const cacheada = await respuestaEnCache(hReq)
   if (cacheada) {
