@@ -165,9 +165,13 @@ async function llamaModelo(op, e) {
     /* Estos bloques son idénticos en todas las consultas del nivel, así que
        se cachean una vez y las siguientes las leen a una décima parte del
        precio. El caché se comparte entre todas las escuelas. */
+    /* El catálogo va COMPLETO y siempre idéntico, a propósito. Es lo que permite
+       que las escuelas de un mismo nivel compartan un solo bloque de memoria en
+       el modelo en vez de pagar una recarga cada quien. Los grados que eligió el
+       colectivo van en el mensaje, no aquí, y el filtrado real lo hace el
+       servidor al verificar. */
     { type: 'text', text: `CATÁLOGO DE CONTENIDOS Y PDA — ${D.nombre}` +
-        (e.grados && e.grados.length < D.grados.length ? ` (grados ${e.grados.join(', ')})` : '') +
-        `\nFormato: id|campo|fase y página|grados|contenido|PDA\n\n${catalogo(e.grados)}`,
+        `\nFormato: id|campo|fase y página|grados|contenido|PDA\n\n${catalogo(null)}`,
       cache_control: { type: 'ephemeral', ttl: '1h' } },
     { type: 'text', text: `FINALIDADES Y ESPECIFICIDADES DE LOS CAMPOS FORMATIVOS\n\n${bloqueCampos()}` },
     { type: 'text', text: `EJES ARTICULADORES (Plan de Estudio 2022)\n\n${bloqueEjes()}` },
