@@ -18,6 +18,16 @@ export const D = NIVELES[(process.env.NIVEL || 'primaria').toLowerCase()] || pri
 export const DEMO = () => process.env.MODO_DEMO === '1'
 export const PorId = new Map(D.contenidos.map(c => [c.id, c]))
 
+/* En secundaria cada campo formativo se imparte por asignaturas y cada una
+   tiene su docente. Preescolar y primaria no se organizan así: ahí esta lista
+   queda vacía y todo lo que depende de ella simplemente no aparece. */
+export const ASIGNATURAS = [...new Set(D.contenidos.map(c => c.subarea).filter(Boolean))]
+const porAsignatura = () => {
+  const m = {}
+  for (const c of D.contenidos) if (c.subarea) (m[c.campo] = m[c.campo] || new Set()).add(c.subarea)
+  return Object.keys(m).map(k => `${k}: ${[...m[k]].join(', ')}`).join('\n')
+}
+
 /* ---------------- catálogo que ve el modelo ---------------- */
 function lineaContenido(c) {
   const pda = Object.keys(c.pda).map(g => `[${g}] ` + c.pda[g].join(' / ')).join(' ')
@@ -76,8 +86,14 @@ Devuelve este JSON:
     "porque":"por qué este contenido se vincula con ESTA problemática, no con el tema en general. 2 o 3 líneas, sin rodeos.",
     "como":"cómo podría abordarse: con qué se empieza, con qué evidencia, quién de la comunidad participa. 2 o 3 líneas, concretas."}
  ],
- "sinAporte": [{"campo":"nombre del campo","razon":"por qué no hay nada pertinente"}]
-}`
+ "sinAporte": [{"campo":"nombre del campo","razon":"por qué no hay nada pertinente"}]${ASIGNATURAS.length ? `,
+ "asignaturas": [{"nombre":"nombre exacto de la asignatura, tal como aparece en el catálogo",
+                  "porque":"qué aporta esta asignatura a ESTA problemática, en 1 o 2 líneas",
+                  "con":["asignaturas con las que conviene que trabaje enlazada"]}]` : ''}
+}${ASIGNATURAS.length ? `
+
+En este nivel cada campo formativo se imparte por asignaturas, y cada una tiene su docente. Además de los contenidos, di en "asignaturas" cuáles pueden trabajar esta problemática y con cuáles conviene que se enlacen, para que el colectivo sepa quién se sienta con quién. Usa solo estos nombres, tal cual:
+${porAsignatura()}` : ''}`
 
   if (op === 'ejes') return `PROBLEMÁTICA:
 """${e.problematica}"""
@@ -337,6 +353,17 @@ export async function procesa(op, e, enDemo, hReq) {
     salida.propuestas = v.buenas
     salida.sinAporte = Array.isArray(datos.sinAporte) ? datos.sinAporte : []
     salida.descartadas = v.descartadas.length
+    /* Las asignaturas también se cotejan: si el modelo inventa una, se cae. */
+    if (ASIGNATURAS.length) {
+      salida.asignaturas = (Array.isArray(datos.asignaturas) ? datos.asignaturas : [])
+        .filter(a => ASIGNATURAS.includes(String(a && a.nombre || '').trim()))
+        .map(a => ({
+          nombre: String(a.nombre).trim(),
+          porque: String(a.porque || '').trim(),
+          con: (Array.isArray(a.con) ? a.con : []).map(String)
+            .map(x => x.trim()).filter(x => ASIGNATURAS.includes(x)),
+        }))
+    }
   } else if (op === 'ejes') {
     const v = verifica(datos.adicionales, e.grados)
     salida.orientacion = String(datos.orientacion || '')
