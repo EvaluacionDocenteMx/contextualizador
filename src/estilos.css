@@ -128,3 +128,17 @@ textarea.chico{min-height:80px}
   .btn.xl{width:100%;justify-content:center}.logo em{display:none}
 }
 
+
+/* ---- asignaturas (solo secundaria) ---- */
+.chip.mini.a-len{border-color:#f3c6d8}
+.chip.mini.a-sab{border-color:#bfe0c8}
+.chip.mini.a-eti{border-color:#f6d9b0}
+.chip.mini.a-hum{border-color:#c9c9ee}
+.mapa{background:var(--suave,#fbf7ff);border:1px solid var(--borde,#eadff5);
+  border-radius:14px;padding:14px 16px;margin:14px 0 4px}
+.mapa h4{margin:0 0 10px;font-size:.98rem}
+.asig{padding:8px 0;border-top:1px dashed var(--borde,#eadff5)}
+.asig:first-of-type{border-top:0}
+.asig b{display:inline-block;margin-right:8px}
+.asig span{font-size:.9rem;color:var(--tinta2)}
+.asig em{display:block;margin-top:4px;font-size:.83rem;color:var(--tinta2);opacity:.85;font-style:normal}
