@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { INFO, CAMPOS, CL, EJES } from './nivel.js'
+import { INFO, CAMPOS, CL, EJES, ASIGNATURAS, ASIGNATURAS_POR_CAMPO } from './nivel.js'
 import { pide, nuevaSesion, VERSION } from './api.js'
 import { Mascota, LogoMini } from './componentes/Mascota.jsx'
 import Propuestas from './componentes/Propuestas.jsx'
@@ -8,7 +8,7 @@ import Documento from './componentes/Documento.jsx'
 import { exportaWord } from './exportar.js'
 
 const vacia = () => ({
-  texto: '', lectura: '', propuestas: [], sinAporte: [], sel: [],
+  texto: '', lectura: '', propuestas: [], sinAporte: [], asignaturas: [], sel: [],
   ejes: [], reo: null, proy: null,
   nuevo: { activo: false, texto: '', res: null },
 })
@@ -49,6 +49,7 @@ export default function App() {
   const [demo, setDemo] = useState(null)
   const [filtroCampo, setFiltroCampo] = useState([])
   const [filtroGrado, setFiltroGrado] = useState([])
+  const [filtroAsig, setFiltroAsig] = useState([])
   const refDoc = useRef(null)
 
   useEffect(() => { document.body.classList.toggle('sobrio', sobrio) }, [sobrio])
@@ -82,8 +83,9 @@ export default function App() {
       return
     }
     upd({ lectura: r.lectura, propuestas: r.propuestas, sinAporte: r.sinAporte || [],
+          asignaturas: r.asignaturas || [],
           sel: r.propuestas.map(p => p.id), reo: null, proy: null })
-    setFiltroCampo([]); setFiltroGrado([])
+    setFiltroCampo([]); setFiltroGrado([]); setFiltroAsig([])
     setTimeout(() => document.getElementById('p2')?.scrollIntoView({ behavior: 'smooth' }), 80)
   }
 
@@ -132,8 +134,9 @@ export default function App() {
 
   const visibles = useMemo(() => act.propuestas.filter(p =>
     (!filtroCampo.length || filtroCampo.includes(p.campo)) &&
-    (!filtroGrado.length || p.grados.some(g => filtroGrado.includes(g)))
-  ), [act.propuestas, filtroCampo, filtroGrado])
+    (!filtroGrado.length || p.grados.some(g => filtroGrado.includes(g))) &&
+    (!filtroAsig.length || filtroAsig.includes(p.subarea))
+  ), [act.propuestas, filtroCampo, filtroGrado, filtroAsig])
 
   const alterna = (lista, set, v) => set(lista.includes(v) ? lista.filter(x => x !== v) : lista.concat(v))
   const restantes = 20 - guardadas.length
@@ -259,7 +262,7 @@ export default function App() {
                 ))}
               </div>
             </div>
-            <div className="row" style={{ marginBottom: 14 }}>
+            <div className="row" style={{ marginBottom: ASIGNATURAS.length ? 6 : 14 }}>
               <label className="f" style={{ margin: 0, minWidth: 58 }}>Grados</label>
               <div className="row">
                 {grados.map(g => (
@@ -268,10 +271,48 @@ export default function App() {
                 ))}
               </div>
             </div>
+            {/* Solo secundaria: cada docente puede quedarse con lo suyo sin perder
+                de vista lo que están viendo los demás. */}
+            {ASIGNATURAS.length > 0 && (
+              <div className="row" style={{ marginBottom: 14, alignItems: 'flex-start' }}>
+                <label className="f" style={{ margin: 0, minWidth: 58 }}>Asignaturas</label>
+                <div className="row">
+                  {Object.keys(ASIGNATURAS_POR_CAMPO).map(campo => (
+                    ASIGNATURAS_POR_CAMPO[campo]
+                      .filter(a => act.propuestas.some(p => p.subarea === a))
+                      .map(a => (
+                        <button key={a} className={'chip mini a-' + CL[campo]}
+                          aria-pressed={!filtroAsig.length || filtroAsig.includes(a)}
+                          onClick={() => alterna(filtroAsig, setFiltroAsig, a)}>{a}</button>
+                      ))
+                  ))}
+                  {filtroAsig.length > 0 && (
+                    <button className="chip mini" onClick={() => setFiltroAsig([])}>todas</button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {act.sinAporte.map((s, i) => (
               <div className="campo-vacio" key={i}><b>{s.campo}:</b> {s.razon}</div>
             ))}
+
+            {/* El mapa de quién se sienta con quién: lo que el colectivo de
+                secundaria necesita para no trabajar cada quien por su lado. */}
+            {act.asignaturas?.length > 0 && (
+              <div className="mapa">
+                <h4>Quién puede trabajar esto, y con quién</h4>
+                {act.asignaturas.map((a, i) => (
+                  <div className="asig" key={i}>
+                    <b>{a.nombre}</b>
+                    <span>{a.porque}</span>
+                    {a.con?.length > 0 && (
+                      <em>Se enlaza bien con: {a.con.join(' · ')}</em>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
 
             <Propuestas lista={visibles} sel={act.sel}
               alterna={(id) => upd(a => ({ sel: a.sel.includes(id) ? a.sel.filter(x => x !== id) : a.sel.concat(id) }))} />
