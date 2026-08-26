@@ -36,24 +36,33 @@ function num(v, d) { const n = parseFloat(v); return Number.isFinite(n) ? n : d 
    proceso (suficiente para desarrollo, se pierde entre invocaciones).
    --------------------------------------------------------------------- */
 let modulo = null
+let cliente = null
+let creado = 0
 let fallo = ''
 const memoria = new Map()
 
 /* El permiso de acceso al almacén CADUCA. La función de segundo plano tarda
-   noventa segundos hablando con el modelo, y si se guarda el acceso desde el
-   arranque, al momento de escribir el resultado ya venció: la consulta se
-   calcula, se paga, y se pierde. Por eso el acceso se pide fresco cada vez.
-   Lo único que se guarda es el módulo, que no caduca. */
-async function store() {
+   noventa segundos hablando con el modelo: si se pide el permiso al arrancar y
+   se guarda, cuando llega el momento de escribir el resultado ya venció, y la
+   consulta se calcula, se paga y se pierde.
+   Pero pedirlo en cada operación tampoco sirve: cuesta tiempo y la aplicación
+   se arrastra. Así que se guarda con fecha de caducidad corta: nunca se usa uno
+   de más de un minuto, y ante un fallo de escritura se pide uno nuevo. */
+const VIDA_PERMISO = 60 * 1000
+async function store(forzar) {
   if (modulo === false) return false
-  try {
-    if (!modulo) modulo = await import('@netlify/blobs')
-    return modulo.getStore('ctx-v2')
-  } catch (err) {
-    fallo = err && err.message ? err.message : String(err)
-    modulo = false
-    return false
+  if (forzar || !cliente || Date.now() - creado > VIDA_PERMISO) {
+    try {
+      if (!modulo) modulo = await import('@netlify/blobs')
+      cliente = modulo.getStore('ctx-v2')
+      creado = Date.now()
+    } catch (err) {
+      fallo = err && err.message ? err.message : String(err)
+      modulo = false
+      return false
+    }
   }
+  return cliente
 }
 
 export async function estadoAlmacen() {
@@ -83,7 +92,7 @@ export async function escribir(clave, valor) {
     /* Un segundo intento con acceso recién pedido: cubre el caso de que el
        permiso haya caducado justo durante la escritura. */
     try {
-      const s2 = await store()
+      const s2 = await store(true)
       if (s2) { await s2.setJSON(clave, valor); return }
       throw err
     } catch (err2) {
