@@ -14,6 +14,19 @@ export const CAMPOS = ['Lenguajes', 'Saberes y Pensamiento Científico',
 export const CL = { 'Lenguajes': 'len', 'Saberes y Pensamiento Científico': 'sab',
   'Ética, Naturaleza y Sociedades': 'eti', 'De lo Humano y lo Comunitario': 'hum' }
 
+/* Solo secundaria se organiza por asignaturas. En los otros niveles esta lista
+   queda vacía y los filtros de asignatura no aparecen. */
+const ASIG = {
+  secundaria: {
+    'Lenguajes': ['Español', 'Lengua Indígena como Lengua Materna', 'Lengua Indígena como Segunda Lengua', 'Inglés', 'Artes'],
+    'Saberes y Pensamiento Científico': ['Matemáticas', 'Biología', 'Física', 'Química'],
+    'Ética, Naturaleza y Sociedades': ['Geografía', 'Historia', 'Formación Cívica y Ética'],
+    'De lo Humano y lo Comunitario': ['Tecnología', 'Educación Socioemocional', 'Tutoría', 'Educación Física'],
+  },
+}
+export const ASIGNATURAS_POR_CAMPO = ASIG[NIVEL] || {}
+export const ASIGNATURAS = Object.values(ASIGNATURAS_POR_CAMPO).flat()
+
 export const EJES = [
   { id: 'inclusion', nombre: 'Inclusión' },
   { id: 'pensamiento_critico', nombre: 'Pensamiento crítico' },
