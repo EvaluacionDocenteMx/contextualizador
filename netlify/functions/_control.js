@@ -20,7 +20,7 @@ export const MODELOS = {
 }
 
 /* Techos de salida por tipo de llamada: ninguna respuesta puede desbordarse. */
-export const MAX_SALIDA = { propuesta: 8000, ejes: 6000, proyecto: 3000, pdaNuevo: 1500 }
+export const MAX_SALIDA = { propuesta: 16000, ejes: 8000, proyecto: 4000, pdaNuevo: 2000 }
 
 export const LIMITES = {
   problematicasPorSesion: num(process.env.TOPE_PROBLEMATICAS, 20),
