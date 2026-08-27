@@ -219,7 +219,8 @@ async function llamaModelo(op, e) {
   }
   const j = await r.json()
   const texto = (j.content || []).filter(x => x.type === 'text').map(x => x.text).join('')
-  return { texto, uso: j.usage || {}, modelo, corte: j.stop_reason === 'max_tokens' }
+  return { texto, uso: j.usage || {}, modelo, corte: j.stop_reason === 'max_tokens',
+           paro: j.stop_reason, bloques: (j.content || []).map(x => x.type).join('+') }
 }
 
 /* Si el modelo se quedo a media frase, se corta en el ultimo elemento que
@@ -349,7 +350,9 @@ export async function procesa(op, e, enDemo, hReq) {
       throw new Error((r.corte
         ? 'La respuesta del modelo se corto por lo larga y no se pudo rescatar. Vuelve a intentar.'
         : 'El modelo devolvio una respuesta que no se pudo leer.') +
-        (pista ? ' [empezaba asi: ' + pista + ']' : ' [no devolvio texto]'))
+        (pista ? ' [empezaba así: ' + pista + ']'
+               : ` [no devolvió texto · paró por ${r.paro} · bloques: ${r.bloques || 'ninguno'}` +
+                 ` · salida ${(r.uso || {}).output_tokens || 0} tokens de ${MAX_SALIDA[op]}]`))
     }
     gasto = await registraGasto(r.modelo, r.uso)
   }
